@@ -122,3 +122,40 @@ Perfer consts, enums, inlines to #defines.
 
 Use const whenever possible
 
+关键字`const`可以用在classes外部修饰`global`或`namespace`作用域中的常量，或修饰文件、函数、或区块作用域(block scope)中被声明为`static`的对象。也可以用来修饰classes内部的`static`和`non-static`的成员变量。面对指针，也可以指出指针自身，指针所指物、或者两者都（或都不）是`const`：
+
+```C++
+    char greeting[] = "Hello";
+    char* p = greeting;          // non-const pointer, non-const data 
+    const char* p = greeting; // non-const pointer, const data
+    char* const p = greeting; // const pointer, non-const data
+    const char* const p = greeting; // const pointer, const data
+```
+
+**如果关键字`const`出现在星号左边，表示被指物是常量；如果出现在星号右边，表示指针自身是常量；如果出现在星号两边，表示被指物和指针两者都是常量。**
+
+> 区分：
+
+1. 指向const的指针
+
+首先是一个指针，但是这个指针所指向的是一个const类型的指针。`const int *p`或`int const *p`
+
+第一种：首先p是一个指针，p所指向的内容(*p)是const int类型的；
+
+第二种：首先p也是一个指针，指向的内容是const int类型的，也就是所指向的内容是是绝对不能被修改的。
+
+2. const指针
+
+ 首先是一个指针，只不过这个指针是const类型的，也就是这个指针变量的地址，只能在初始化之后，就一直指向这个地址，地址所被保存的内容是可变的。 
+
+ `int * const p = 地址; // 因为p所指向的地址不能被修改，所以必须初始化`
+
+首先，这个p是一个指针，而这个指针是指向了int类型的const指针。只不过地址是被固定，不能改变，但是地址所保存的数值确实可变的。
+
+如果被指物是常量，则存在两种写法：
+
+```C++
+    void f1(const Widget* pw);      // f1获得一个指针，指向一个常量的Widget对象
+    void f2(Widget cosnt * pw);     // f2也是
+```
+
