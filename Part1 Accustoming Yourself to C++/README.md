@@ -316,3 +316,109 @@ Make sure that objects are initialized before they're used.
 
 至于内置类型以外的任何其他东西，初始化责任落在构造函数(constructors)身上。规则很简单：**确保每一个构造函数都将对象的每一个成员初始化**。但重要的是别混淆了**赋值**(**assignment**)和**初始化**(**initialization**)。
 
+考虑一个通讯簿class，其构造函数如下：
+
+```C++
+    class PhoneNumber {};
+    class ABEntry{  // Address book Entry
+    public:
+        ABEntey(const std::string& name, const std:: string& address, 
+        cosnt std::list<PhoneNumber>& phones);
+    private:
+        std::string theName;
+        std::string theAddress;
+        std::list<PhoneNumber> thePhones;
+        int numTimesConsulted;
+    };
+    ABEntry::ABEntey(const std::string& name, const std:: string& address, 
+        cosnt std::list<PhoneNumber>& phones)
+    {
+        theName = name;     // 这些都是赋值，不是初始化
+        theAddress = address;
+        thePhones = phones;
+        numTimesConsulted = 0;
+    }
+```
+
+这会导致ABEntry对象带有你期望（你指定）的值，但不是最佳做法。C++规定，**对象的成员变量的初始化动作发生在进入构造函数本体之前**。
+
+ABEntry构造函数的一个较佳写法是，使用所谓的member initialization list(成员初值列)替换赋值动作：
+
+```C++
+    ABEntry::ABEntey(const std::string& name, const std:: string& address, 
+        cosnt std::list<PhoneNumber>& phones)
+    :theName(name), thePhones(phones), theAddress(address), numTimesConsulted(0)
+    {}
+```
+
+这个构造函数和上一个的最终结果相同，但通常效率较高。对大多数类型而言，比起先调用default构造函数然后再调用copy assignment操作符，单只调用一次copy构造函数是比较高效的，有时甚至高效得多。对于内置型对象如nurnTimesConsulted，其初始化和赋值的成本相同。
+
+有些情况下即使面对的成员变量属于内置类型（那么其初始化与赋值的成本相同），也一定得使用初值列。是的，如果成员变量是const或references，它们就一定需要初值，不能被赋值。
+
+C++有着十分固定的“成员初始化次序”，次序总是相同：base classes更早于其derived classes被初始化，而class的成员变量总是以其声明次序被初始化，即使它们在成员初值列中以不同的次序出现。
+
+但还需要注意的是**不同编译单元内定义的non-local static对象的初始化顺序**。
+
+所谓static对象，其寿命从被构造出来直到程序结束为止，这种对象包括global对象、定义于namespace作用域内的对象、在classes内、在函数内、以及在file作用域内被声明为static的对象。函数内的static对象称为local static对象，其他static对象成为non-local static对象。
+
+所谓编译单元(translation unit)是指产出单一目标文件(single object file)的那些源码。基本上它是单源码文件加上其所含入的头文件(#include files)。
+
+```C++
+    class FileSystem
+    {
+    public:
+        std::size_t numDisks() const;
+    };
+    extern FileSystem tfs;
+```
+
+```C++
+    class Directory
+    {
+    public:
+        Directory(params);
+    };
+    Directory::Directory(params)
+    {
+        std::size_t disks = tfs.numDisks(); // 调用tfs对象
+    }
+```
+
+进一步假设，这些客户决定创建一个Directory对象，用来放置临时文件：`Directory tempDir(params);`。
+
+现在，初始化次序的重要性显现出来了：除非tfs在tempDir之前先被初始化，否则tempDir的构造函数会用到尚未初始化的tfs。但tfs和tempDir是不同的人在不同的时间于不同的源码文件建立起来的，它们是定义千不同编译单元内的non-local static对象。
+
+C++对“定义于不同的编译单元内的non-local static对象”的初始化相对次序并无明确定义。但可通过一个小小的设计消除这个问题：将每个non-local static对象搬到自己的专属函数内，这些函数返回一个reference指向它所含的对象。然后用户调用这些函数，而不直接指向这些对象。
+
+也就是说，non-local static对象被local static对象替换掉了。这一点的基础在于**C++保证，函数内的local static对象会在“该函数被调用期间”、“首次遇上该对象之定义式”时被初始化**。
+
+```C++
+    class FileSystem {};    // 声明
+    FileSystem& tfs()   // 这个函数用来替换tfs对象，它在FileSystem class中可能是个static。
+    {
+        static FileSystem fs;   // 定义并初始化一个local static对象，返回一个reference指向上述对象。
+        return fs;
+    };
+
+    class Directory {};     // 同前
+    Directory::Directory(params)
+    {
+        std::size_t disks = tfs().numDisks(); // 改为tfs()
+    }
+
+    Directory& tempDir()    // 这个函数用来替换tempDir对象;它在Directory class中可能是个static
+    {
+        static Directory td;
+        return td;
+    }
+```
+
+这么修改之后，这个系统程序的客户完全像以前一样地用它，唯一不同的是他们现在使用tfs()和tempDir()而不再是tfs和tempDir。也就是说他们使用函数返回的“指向static对象”的references, 而不再使用static对象自身。
+
+### 请记住
+
+1. 为内置型对象进行手动初始化，因为C++不保证初始化它们。
+
+2. 构造函数最好使用成员初值列(member initialization list)，而不要在构造函数本体内使用赋值操作(assignment)。初值列列出的成员变量，其排列次序应该和它们在class中的声明次序相同。
+
+3. 为免除“跨编译单元之初始化次序”问题，请以local static对象替换non-local static对象。
