@@ -81,3 +81,47 @@ NarnedObject既没有声明copy构造函数，也没有声明copy assignment操�
 
 Explicitly disallow the use of compiler-generated functions you do not want
 
+为了阻止编译器自动生成copy构造函数或copy assignment操作符，可以将copy构造函数或copy assignment操作声明为private。
+
+但这种做法还是不安全，member函数和friend函数仍可以调用private函数。因此，在声明private函数的基础上，不去实现它们，那么在不慎调用时则会出现连接错误(linkage error)。例如：
+
+```C++
+    class HomeForSale{
+    public:
+        ...
+    private:
+        HomeForSale(const HomeForSale&);
+        HomeForSale& operator=(const HomeForSale&);
+    }
+```
+
+将连接期错误移至编译期是可能的（而且那是好事，毕竟愈早侦测出错误愈好），只要将copy构造函数和copy assignment操作符声明为private就可以办到，但不是在HomeForSale自身，而是在一个专门为了阻止copying动作而设计的base class内。这个base class非常简单：
+
+```C++
+    class Uncopyable{
+    protected:              // 允许derived对象构造和析构
+        Uncopyable() {}
+        ~Uncopyable() {}
+    private:
+        Uncopyable(const Uncopyable&);
+        Uncopyable& operator=(const Uncopyable&);
+    };
+
+    // 为求阻止HomeForSale对象拷贝，唯一需要做的是继承Uncopyable
+
+    class HomeForSale : private Uncopyable 
+    {
+        // class不再声明copy构造函数和copy assignment操作符
+    };
+```
+
+Uncopyable class的实现和运用颇为微妙，包括不一定得以public继承它，以及Uncopyable的析构函数不一定得是virtual等等。
+
+### 请记住
+
+为驳回编译器自动（暗自）提供的机能，可将相应的成员函数声明为private并且不予实现。使用像Uncopyable这样的base class也是一种做法。
+
+## 条款07：为多态积累声明virtual析构函数
+
+Declare destrucotrs virtual in polymorphic base classes.
+
