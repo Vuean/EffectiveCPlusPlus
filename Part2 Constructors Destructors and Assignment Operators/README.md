@@ -125,3 +125,57 @@ Uncopyable class的实现和运用颇为微妙，包括不一定得以public继�
 
 Declare destrucotrs virtual in polymorphic base classes.
 
+设计一个TimeKeeper base class和一些derived classes作为不同的计时方法：
+
+```C++
+    class TimeKeeper
+    {
+    public:
+        TimeKeeper();
+        ~TimeKeeper();
+        ...
+    };
+    class AutomicClock : public TimeKeeper{};   // 原子钟
+    class WaterClock : public TimeKeeper{};   // 水钟
+    class WristWatch : public TimeKeeper{};   // 腕表
+```
+
+许多客户只想在程序中使用时间，不想操心时间如何计算等细节，这时候我们可以设计factory（工厂）函数，返回指针指向一个计时对象。Factory函数会“返回一个base class指针，指向新生成的derived class对象”：
+
+```C++
+    TimeKeeper* getTimeKeeper();    // 返回一个指针，指向一个TimeKeeper派生类的动态分配对象
+```
+
+为遵守factory函数的规矩，被getTimeKeeper()返回的对象必须位于heap。因此为了避免泄漏内存和其他资源，将factory函数返回的每一个对象适当地delete掉很重要：
+
+```C++
+    TimeKeeper* ptk = getTimeKeeper();
+    ...
+    delete ptk; // 释放，避免内存泄露
+```
+
+但上述代码存在：“纵使客户每一件事都做对了，仍然没有办法知道程序如何行动”。
+
+问题出在getTimeKeeper返回的指针指向一个derived class对象（例如AtomicClock)，而那个对象却经由一个base class指针（例如一个TimeKeeper*指针）被删除，而目前的base class(TimeKeeper)有个non-virtual析构函数。
+
+这是一个灾难的来源，因为C++明确指出，当derived class对象经由一个base class指针被删除，而该base class带着一个non-virtual析构函数，其**结果是未定义的**——实际执行时通常发生的是对象的derived成分没被销毁。
+
+最终结果可能是：getTimeKeeper返回的对象（假如为AtomicClock），其内的AtomicClock成分（声明的成员变量）很可能没被销毁，其析构函数可能也未被执行。最终导致产生“局部销毁”的对象，形成资源泄露、损坏数据结构等。
+
+消除这个问题的做法很简单：给base class一个virtual析构函数。此后删除derived class会销毁整个对象，包括所有derived class成分：
+
+```C++
+    class TimeKeeper
+    {
+    public:
+        TimeKeeper();
+        virtual ~TimeKeeper();
+        ...
+    }; 
+    TimeKeeper* ptk = getTimeKeeper();
+    ...
+    delete ptk;
+```
+
+像TimeKeeper这样的base classes除了析构函数之外通常还有其他virtual函数，因为virtual函数的目的是允许derived class的实现得以客制化(见条款34)。例如TimeKeeper就可能拥有一个virtual getCurrentTime，它在不同的derived classes中有不同的实现码。任何class只要带有virtual函数都几乎确定应该也有一个virtual析构函数。
+
