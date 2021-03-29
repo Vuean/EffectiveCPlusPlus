@@ -209,3 +209,102 @@ Declare destrucotrs virtual in polymorphic base classes.
 
 Prevent exceptions from leaving destrucotrs
 
+设计一个class负责数据库连接：
+
+```C++
+    class DBConnection
+    {
+    public:
+        static DBConnection create();   // 返回DBConnection 对象；
+        void close();   // 关闭联机，失败则抛出异常
+    };
+```
+
+为确保客户不忘记在DBConnection对象身上调用close()，一个合理的想法是创建一个用来管理DBConnection资源的class，并在其析构函数中调用close。
+
+```C++
+    class DBConn
+    {
+    public:
+        ~DBConn()
+        {
+            db.close();
+        }
+    private:
+        DBConnection db;
+    };
+```
+
+只要调用close成功，一切都美好。但如果该调用导致异常，DBConn析构函数会传播该异常，也就是允许它离开这个析构函数。那会造成问题，因为那就是抛出了难以驾驭的麻烦。
+
+两个方法可以避免这一问题。
+
+- 如果close抛出异常就结束程序。通常通过调用abort完成：
+
+```C++
+    DBConn()::~DBConn()
+    {
+        try{ db.close(); }
+        catch(...)
+        {
+            // 制作运转记录，记下对close的调用失败；
+            std::abort();
+        }
+    }
+```
+
+也就是说调用abort可以抢先制“不明确行为”于死地。
+
+- 吞下因调用close而发生的异常：
+
+```C++
+    DBConn()::~DBConn()
+    {
+        try{ db.close(); }
+        catch(...)
+        {
+            // 制作运转记录，记下对close的调用失败；
+        }
+    }
+```
+
+一个较佳策略是重新设计DBConn接口，使其客户有机会对可能出现的问题作出反应。例如DBConn自己可以提供一个close函数，因而赋予客户一个机会得以处理“因该操作而发生的异常”。DBConn也可以追踪其所管理之DBConnection是否已被关闭，并在答案为否的情况下由其析构函数关闭之。这可防止遗失数据库连接。
+
+```C++
+    class DBConn
+    {
+    public:
+        void close()
+        {
+            db.close();
+            closed = true;
+        }
+        ~DBConn()
+        {
+            if(!closed)
+            {
+                try{
+                    db.close();
+                }
+                catch(...)
+                {
+                     // 制作运转记录，记下对close的调用失败；
+                }
+            }
+        }
+    private:
+        DBConnection db;
+        bool closed;
+    };
+```
+
+> 请记住
+
+- 析构函数绝对不要吐出异常。如果一个被析构函数调用的函数可能抛出异常，析构函数应该捕捉任何异常，然后吞下它们（不传播）或结束程序。
+
+- 如果客户需要对某个操作函数运行期间抛出的异常做出反应，那么class应该提供一个普通函数（而非在析构函数中）执行该操作。
+
+## 条款09: 绝不在构造和析构过程中调用virtual函数
+
+Nerver call virtual functions during constructions or destructions
+
