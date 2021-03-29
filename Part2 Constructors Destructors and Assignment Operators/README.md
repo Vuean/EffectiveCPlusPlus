@@ -40,9 +40,9 @@ NarnedObject既没有声明copy构造函数，也没有声明copy assignment操�
     NamedObject<int> no1(no1);
 ```
 
-编译器生成的copy构造函数必须以no1.nameValue和no1.objectValue为初值设定no2.nameValue和no2.objectValue。两者之中，nameValue的类型是string，而标准string有个copy构造函数，所以no2.nameValue的初始化方式是调用string的copy构造函数并以no1.nameValue为实参。另一个成员NamedObject<int>::objectValue的类型是int(因为对此template具现体而言T是int)，那是个内置类型，所以no2.objectValue会以“拷贝nol.objectValue内的每一个bits”来完成初始化。
+编译器生成的copy构造函数必须以no1.nameValue和no1.objectValue为初值设定no2.nameValue和no2.objectValue。两者之中，nameValue的类型是string，而标准string有个copy构造函数，所以no2.nameValue的初始化方式是调用string的copy构造函数并以no1.nameValue为实参。另一个成员NamedObject< int >::objectValue的类型是int(因为对此template具现体而言T是int)，那是个内置类型，所以no2.objectValue会以“拷贝nol.objectValue内的每一个bits”来完成初始化。
 
-编译器为NamedObject<int>所生的copy assignment操作符，其行为基本上与copy构造函数如出一辙，但一般而言只有当生出的代码合法且有适当机会证明它有意义，其表现才会如我先前所说。万一两个条件有一个不符合，编译器会拒绝为class生出operator=。
+编译器为NamedObject< int >所生的copy assignment操作符，其行为基本上与copy构造函数如出一辙，但一般而言只有当生出的代码合法且有适当机会证明它有意义，其表现才会如我先前所说。万一两个条件有一个不符合，编译器会拒绝为class生出operator=。
 
 举例，改变NarnedObject种nameValue为reference to string，objectValue是const T：
 
@@ -73,7 +73,7 @@ NarnedObject既没有声明copy构造函数，也没有声明copy assignment操�
 
 **如果打算在一个“内含reference成员”的class内支持赋值操作(assignment)，必须自己定义copy assignment操作符**。面对“内含const成员”的classes，编译器的反应也一样。
 
-### 请记住
+> 请记住
 
 编译器可以暗自为class创建default构造函数、copy构造函数、copy assignment操作符，以及析构函数。
 
@@ -117,7 +117,7 @@ Explicitly disallow the use of compiler-generated functions you do not want
 
 Uncopyable class的实现和运用颇为微妙，包括不一定得以public继承它，以及Uncopyable的析构函数不一定得是virtual等等。
 
-### 请记住
+> 请记住
 
 为驳回编译器自动（暗自）提供的机能，可将相应的成员函数声明为private并且不予实现。使用像Uncopyable这样的base class也是一种做法。
 
@@ -178,4 +178,34 @@ Declare destrucotrs virtual in polymorphic base classes.
 ```
 
 像TimeKeeper这样的base classes除了析构函数之外通常还有其他virtual函数，因为virtual函数的目的是允许derived class的实现得以客制化(见条款34)。例如TimeKeeper就可能拥有一个virtual getCurrentTime，它在不同的derived classes中有不同的实现码。任何class只要带有virtual函数都几乎确定应该也有一个virtual析构函数。
+
+但是，如果class不含virtual函数，通常表示它并不意图被用做一个base class。当class不企图被当作base class，令其析构函数为virtual往往是个馈主意。考虑一个用来表示二维空间点坐标的class:
+
+```C++
+    class Point{
+    public:
+        Point(int xCoord, int yCoord);
+        ~Point();
+    private:
+        int x, y;
+    };
+```
+
+如果int占用32 bits，那么Point对象可塞入一个64-bit缓存器中。然而当Point的析构函数是virtual，形势起了变化。
+
+欲实现出virtual函数，对象必须携带某些信息，主要用来在运行期决定哪一个virtual函数该被调用。这份信息通常是由一个所谓vptr(virtual table pointer)指针指出。vptr指向一个由函数指针构成的数组，称为vtbl(virtual table)；每一个带有virtual函数的class都有一个相应的vtbl。当对象调用某一virtual函数，实际被调用的函数取决于该对象的vptr所指的那个vtbl——编译器在其中寻找适当的函数指针。
+
+因此，如果Point class内含virtual函数，其对象的体积会增加：添加一个vptr会增加其对象大小达50%~100%！而且，Point对不再能够塞入一个64-bit缓存器，而C++的Point对象也不再和其他语言(如C)内的相同声明有着一样的结构(因为其他语言的对应物并没有vptr)，因此也就不再可能把它传递至（或接受自）其他语言所写的函数，除非你明确补偿vptr——那属于实现细节，也因此不再具有移植性。
+
+**只有当class内含至少一个virtual函数，才为它声明virtual析构函数。**
+
+> 请记住
+
+- polymorphic（带多态性质的）base classes应该声明一个virtual析构函数。如果class带有任何virtual函数，它就应该拥有一个virtual析构函数。
+
+- classes的设计目的如果不是作为base classes使用，或不是为了具备多态性(polymorphically)，就不该声明virtual析构函数。
+
+## 条款08: 别让异常逃离析构函数
+
+Prevent exceptions from leaving destrucotrs
 
