@@ -308,3 +308,99 @@ Prevent exceptions from leaving destrucotrs
 
 Nerver call virtual functions during constructions or destructions
 
+不该在构造函数和析构函数期间调用virtual函数，因为这样的调用不会带来你预想的结果。
+
+假设有一个class继承体系，用来模拟股市交易如买进、卖出的订单等等。这样的交易一定要经过审计，所以每当创建一个交易对象，在审计日志(audit log)中也需要创建一笔适当记录。下面是一个看起来颇为合理的做法：
+
+```C++
+    class Transaction
+    {
+    public:
+        Transction();
+        virtual void logTransaction() cosnt = 0;
+    };
+
+    Transaction::Transaction()
+    {
+        logTransaction();
+    }
+    
+    class BuyTransaction: public Transaction
+    {
+    public:
+        virtual void logTransaction() const;
+    };
+
+    class SellTransaction : public Transaction
+    {
+    public:
+        virtual void logTransaction() const;
+    };
+```
+
+现在，执行`BuyTransaction b;`，会发生什么呢？
+
+无疑地会有一个BuyTransaction构造函数被调用，但首先Transaction构造函数一定会更早被调用；是的，derived class对象内的base class成分会在derived class自身被构造之前先构造妥当。Transaction构造函数的最后一行调用virtua函数logTransaction，这正是引发惊奇的起点。这时候被调用的logTransaction是Transaction内的版本，不是BuyTransaction内的版本——即使目前即将建立的对象类型是BuyTransaction。是的，base class构造期间virtual函数绝不会下降到derived classes阶层。取而代之的是，对象的作为就像隶属base类型一样。非正式的说法或许比较传神：**在base class构造期间，virtual函数不是virtual函数**。
+
+更根本的原因是：**在derived class对象的base class构造期间，对象的类型是base class而不是derived class**。
+
+相同道理也适用于析构函数。一旦derived class析构函数开始执行，对象内的derived class成员变量便呈现未定义值。
+
+但是侦测“构造函数或析构函数运行期间是否调用virtual函数”并不总是这般轻松。如果Transaction有多个构造函数，每个都需执行某些相同工作，那么避免代码重复的一个优秀做法是把共同的初始化代码（其中包括对logTransaction的调用）放进一个初始化函数如init内：
+
+```C++
+    class Transaction
+    {
+    public:
+        Transction() {init();};
+        virtual void logTransaction() cosnt = 0;
+    private:
+        void init()
+        {
+            ...
+            logTransaction();
+        }
+    };
+```
+
+这段代码概念上和稍早版本相同，但它比较潜藏并且暗中为害，因为它通常不会引发任何编译器和连接器的抱怨。
+
+但如何确保每次一有Transaction继承体系上的对象被创建，就会有适当版本的logTransaction被调用呢？
+
+一种做法是在class Transaction内将logTransaction函数改为non-virtual，然后要求derived class构造函数传递必要信息给Transaction构造函数，而后那个构造函数便可安全地调用non-virtual logTransaction。像这样：
+
+```C++
+    class Transaction
+    {
+    public:
+        explicit Transction(const std::string& logInfo);
+        void logTransaction(const std::string& logInfo);
+    };
+
+    Transaction:: Transaction(const std::string& logInfo)
+    {
+        logTransaction(logInfo);
+    }
+
+    class BuyTransaction: public Transaction
+    {
+    public:
+        BuyTransaction(parameters): Transaction(createLogString(parameters))
+        {};
+    private:
+        static std::string createLogString(parameters);
+    };
+```
+
+换句话说由于无法使用virtual函数从base classes向下调用，在构造期间，可以藉由“令derived classes将必要的构造信息向上传递至base class构造函数”替换之而加以弥补。
+
+比起在成员初值列(member initialization list)内给予base class所需数据，利用辅助函数创建一个值传给base class构造函数往往比较方便（也比较可读）。令此函数为static，也就不可能意外指向“初期未成熟之BuyTransaction对象内尚未初始化的成员变量”。
+
+> 请记住
+
+构造和析构期间不要调用virtual函数，因为这类调用从不下降至derived class（比起当前执行构造函数和析构函数的那层）。
+
+## 条款10: 令operator=返回一个reference to *this
+
+Have assignment operators return a reference to *this.
+
