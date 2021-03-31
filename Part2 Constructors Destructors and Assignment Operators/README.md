@@ -404,3 +404,43 @@ Nerver call virtual functions during constructions or destructions
 
 Have assignment operators return a reference to *this.
 
+关于赋值，有趣的是你可以把它们写成连锁形式：
+
+```C++
+    int x, y, z;
+    x = y = z = 15; // 赋值连锁形式
+```
+
+同样有趣的是，赋值采用右结合律，所以上述连锁赋值被解析为：
+
+```C++
+    x = (y = (z = 15));
+```
+
+这里15先被赋值给z，然后其结果(更新后的z)再被赋值给y，然后其结果(更新后的y)再被赋值给x。
+
+为了实现“连锁赋值”，赋值操作符必须返回一个reference指向操作符的左侧实参。这是你为classes实现赋值操作符时应该遵循的协议：
+
+```C++
+    class Widget
+    {
+    public:
+        Widget& operator=(const Widget& rhs)
+        {
+            return *this;
+        }
+    };
+```
+
+这个协议不仅适用于以上的标准赋值形式，也适用于所有赋值相关运算，例如：
+
+注意，这只是个协议，并无强制性。如果不遵循它，代码一样可通过编译。然而这份协议被所有内置类型和标准程序库提供的类型如string、vector、complex、tr1::shared_ptr或即将提供的类型共同遵守。
+
+> 请记住
+
+令赋值(assignment)操作符返回一个reference to *this。
+
+## 条款11：在operator=中处理“自我赋值”
+
+Handle assignment to self in operator=
+
