@@ -444,3 +444,96 @@ Have assignment operators return a reference to *this.
 
 Handle assignment to self in operator=
 
+“自我赋值”发生在对象被赋值给自己时：
+
+```C++
+    class Widget{...};
+    Widget w;
+    ...
+    w = w;  // 自我赋值
+```
+
+在尝试自行管理资源（如打算写一个用于资源管理的class就得这么做），可能会掉进“在停止使用资源之前就释放了它”的陷阱。假设建立了一个class用来保存一个指针指向一块动态分配的位图(bitmap)：
+
+```C++
+    class Bitmap{...};
+    class Widget{
+        ...
+    private:
+        Bitmap* pb; // 指针，指向一个heap分配的对象
+    };
+```
+
+下面是operator=实现代码，表面上看起来合理，但自我赋值出现时并不安全：
+
+```C++
+    Widget& Widget::operator=(const Widget& rhs)
+    {
+        delete pb;
+        pb = new Bitmap(*rhs.pb);
+        return *this;
+    }
+```
+
+这里的自我赋值问题是，operator=函数内的*this（赋值的目的端）和rhs有可能是同一个对象。果真如此delete就不只是销毁当前对象的bitmap，它也销毁rhs的bitmap。在函数末尾，Widget——它原本不该被自我赋值动作改变的——发现自己待有一个指针指向一个已被删除的对象！
+
+欲阻止这种错误，传统做法是藉由operator=最前面的一个“证同测试(identity test)”达到“自我赋值”的检验目的：
+
+```C++
+    Widget& Widget::operator=(const Widget& rhs)
+    {
+        if(this == rhs) return *this;
+        delete pb;
+        pb = new Bitmap(*rhs.pb);
+        return *this;
+    }
+```
+
+但这个新版本仍然存在异常方面的麻烦。更明确地说，如果“new Bitmap”，导致异常（不论是因为分配时内存不足或因为Bitmap的
+copy构造函数抛出异常），Widget最终会持有一个指针指向一块被删除的Bitmap。
+
+但本条款只要你注意“许多时候一群精心安排的语句就可以导出异常安全（以及自我赋值安全）的代码”，这就够了。例如以下代码，我们只需注意在复制pb所指东西之前别删除pb：
+
+```C++
+    Widget& Widget::operator=(const Widget& rhs)
+    {
+        Bitmap* pOrig = pb; // 记住原先的pb
+        pb = new Bitmap(*rhs.pb);
+        delete pOrig;
+        return *this;
+    }
+```
+
+现在，如果“newBitmap”抛出异常，pb(及其栖身的那个Widget)保持原状。即使没有证同测试(identity test)，这段代码还是能够处理自我赋值，因为我们对原bitmap做了一份复件、删除原bitmap、然后指向新制造的那个复件。它或许不是处理“自我赋值”的最高效办法，但它行得通。
+
+在operator=函数内手工排列语句(确保代码不但“异常安全”而且“自我赋值安全”)的一个替代方案是，使用所谓的copy and swap技术：
+
+```C++
+    class Widget{
+        ...
+        void swap(Widget& rhs); // 交换*this和rhs数据
+    }
+    
+    Widget& Widget::operator=(const Widget& rhs)
+    {
+        Widget temp(rhs);   // 备份rhs数据（副本）
+        swap(temp);
+        return *this;
+    }
+```
+
+上述方法成立的前提和后果是：
+
+1. class的copy assignment操作符可能被声明为“以by value方式接受实参”;
+
+2. 以by value方式传递东西会造成一份复件／副本
+
+> 请记住
+
+- 确保当对象自我赋值时operator=有良好行为。其中技术包括比较“来源对象”和“目标对象”的地址、精心周到的语句顺序、以及copy-and-swap。
+
+- 确定任何函数如果操作一个以上的对象，而其中多个对象是同一个对象时，其行为仍然正确。
+
+## 条款12: 复制对象时勿忘其每一个成分
+
+Copy all parts of an object
