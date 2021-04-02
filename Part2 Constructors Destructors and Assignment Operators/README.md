@@ -537,3 +537,94 @@ copy构造函数抛出异常），Widget最终会持有一个指针指向一块�
 ## 条款12: 复制对象时勿忘其每一个成分
 
 Copy all parts of an object
+
+在声明自己的copying函数(copy构造函数和copy assignment操作符)时，如果实现代码几乎必然出错时，编译器并不会告诉你。
+
+考虑一个class用来表现顾客，其中手工写出（而非由编译器创建）copying函数，使得外界对它们的调用会被记(logged)下来：
+
+```C++
+    void logCall(const std::string& funcName)   // 创造一个log entry
+    class Customer{
+    public:
+        Customer(const Customer&);
+        Customer& operator=(const Customer& rhs);
+    private:
+        std::string name;
+    };
+
+    Customer::Customer(const Customer& rhs) : name(rhs.name)
+    {
+        logCall("Customer copy constructor");
+    }
+    Customer& Customer::operator=(const Customer& rhs)
+    {
+        logCall("Customer copy assignment operator");name = rhs.name;
+        return *this;
+    }
+```
+
+这里的每一件事情看起来都很好，而实际上每件事情也的确都好，直到另一个成员变量加入战局：
+
+```C++
+    class Date {};
+    class Customer{
+    public:
+        ...
+    private:
+        std::string name;
+        Date lastTransaction;
+    };
+```
+
+这时候既有的copying函数执行的是局部拷贝(partial copy)：它们的确复制了顾客的name，但没有复制新添加的lastTransaction 。大多数编译器对此不出任何怨言，针对自己写出copying函数，如果你的代码不完全，它们也不提醒。结论很明显：如果你为class添加一个成员变量，你必须同时修改copying函数。
+
+一旦发生继承，可能会造成此一主题最暗中肆虐的一个潜藏危机：
+
+```C++
+    class PriorityCustomer : public Customer{
+    public:
+        PriorityCustomer(const PriorityCustomer& rhs);
+        PriorityCustomer& operator=(const PriorityCustomer& rhs);
+    private:
+        int priority;
+    };
+
+    PriorityCustomer :: PriorityCustomer(const PriorityCustomer& rhs) : priority(rhs.priority)
+    {
+        logCall("PriorityCustomer copy constructor");
+    }
+
+    PriorityCustomer& operator=(const PriorityCustomer& rhs)
+    {
+        logCall("PriorityCustomer copy assignment operator");
+        priority = rhs.priority;
+        return *this;
+    }
+```
+
+PriorityCustomer的copying函数看起来好像复制了PriorityCustomer内的每样东西，但是请再看一眼。是的，它们复制了PriorityCustomer声明的成员变量，但每个PriorityCustomer还内含它所继承的Customer成员变量复件（副本），而那些成员变量却未被复制。PriorityCustomer的copy构造函数并没有指定实参传给其base class构造函数（也就是说它在它的成员初值列(member initialization list)中没有提到Customer)，因此PriorityCustomer对象的Customer成分会被不带实参的Customer构造函数（即default构造函数必定有一个否则无法通过编译）初始化。default构造函数将针对name和lastTransacLlon执行缺省的初始化动作。
+
+应该让derived class的copying函数调用相应的base class函数：
+
+```C++
+    PriorityCustomer :: PriorityCustomer(const PriorityCustomer& rhs) : Customer(rhs), priority(rhs.priority)
+    {
+        logCall("PriorityCustomer copy constructor");
+    }
+
+    PriorityCustomer& operator=(const PriorityCustomer& rhs)
+    {
+        logCall("PriorityCustomer copy assignment operator");
+        Customer::operator=(rhs);   // 对base class成分进行赋值动作
+        priority = rhs.priority;
+        return *this;
+    }
+```
+
+当你编写一个copying函数，**请确保(1):复制所有local成员变量，(2)调用所有base classes内的适当的copying函数**。
+
+> 请记住
+
+- Copying函数应该确保复制“对象内的所有成员变量”及“所有base class成分”。
+
+- 不要尝试以某个copying函数实现另一个copying函数。应该将共同机能放进第三个函数中，并由两个coping函数共同调用。
