@@ -105,3 +105,88 @@ auto_ptr和tr1::shared_ptr两者都在其析构函数内做delete而不是delete
 ## 条款14：在资源管理类中小心coping行为
 
 Thing carefully about copying behavior in resource-managing classes.
+
+当资源不是heap-based，对这种资源而言，像auto_ptr和tr1::shared_ptr这样的智能指针往往不适合作为资源掌管者(resource handlers)。既然如此，有可能偶而你会发现，你需要建立自己的资源管理类。
+
+例如，假设我们使用CAPI函数处理类型为Mutex的互斥器对象(mutex objects)，共有lock和unlock两函数可用：
+
+```C++
+    void lock (Mutex* pm); // 锁定pm所指的互斥器
+    void unlock (Mutex* pm); // 将互斥器解除锁定
+```
+
+为确保绝不会忘记将一个被锁住的Mutex解锁，你可能会希望建立一个class用来管理机锁。这样的class的基本结构由RAII守则支配，也就是“资源在构造期间获得，在析构期间释放”:
+
+```C++
+    class Lock{
+    public:
+        explicit Lock(Mutex* pm) : mutexPtr(pm)
+        {Lock(mutexPtr);}   // 获得资源
+        ~Lock() {unlock(mutexPtr);}
+    private:
+        Mutex* mutexPtr;
+    };
+```
+
+客户对Lock的用法符合RAII方式：
+
+```C++
+    Mutex m;    // 定义所需的互斥器
+    ...
+    {   // 处立一个区块用来定义critical section.
+        Lock m1(&m);    // 锁定互斥器
+        ... // 执行critical section内的操作
+    }   // ／在区块最末尾，自动解除互斥器锁定．
+```
+
+这很好，但如果Lock对象被复制，会发生什么事？
+
+```C++
+    Lock m11(&m);   // 锁定m
+    Lock m12(m11);  // 将m11复制到m12身上，这会发生什么？
+```
+
+上述所描述的一般问题是：“当一个RAII对象被复制，会发牛什么事？”大多数时候你会选择以下两种可能：
+
+- 禁止复制。
+
+    许多时候允许RAII对象被复制并不合理。对一个像Lock这样的class这是有可能的，因为很少能够合理拥有“同步化基础器物”(synchronization primitives)的复件（副本）。因此，可将copying操作声明为private，来禁止复制。
+
+- 对底层资源祭出“引用计数法”(reference-count)
+
+    有时候我们希望保有资源，直到它的最后一个使用者（某对象）被销毁。这种情况下复制RAII对象时，应该将资源的”被引用数”递增。tr1::shared_ptr便是如此。
+
+如果前述的Lock打算使用reference counting，它可以改变mutexPtr的类型，将它从Mutex*改为tr1::shared_ptr< Mutex >。然而很不幸tr1::shared_ptr的缺省行为是“当引用次数为0时删除其所指物”，那不是我们所要的行为。当我们用上一个Mutex，我们**想要做的释放动作是解除锁定而非删除**。
+
+幸运的是tr1::shared_ptr允许指定所谓的“删除器”(deleter)，那是一个函数或函数对象(function object)，当引用次数为0时便被调用（此机能并不存在于auto_ptr——它总是将其指针删除）。删除器对tr1::shared_ptr构造函数而言是可有可无的第二参数，所以代码看起来像这样：
+
+```C++
+    class Locl{
+    public:
+        // 以某个Mutex初始化shared_ptr并以unlock函数为删除器
+        explicit Lock(Mutex* pm) : mutexPtr(pm, unlock)
+        {
+            Lock(mutexPtr.get());
+        }
+    private:
+        std::tr1::shared_ptr<Mutex> mutexPtr;   // 使用shared_ptr替换raw pointer
+    };
+```
+
+请注意，本例的Lock class不再声明析构函数。因为没有必要。
+
+- 复制底部资源。
+
+    有时候，可以针对一份资源拥有其任意数量的复件（副本）。而你需要“资源管理类”的唯一理由是，当你不再需要某个复件时确保它被释放。在此情况下复制资源管理对象，应该同时也复制其所包覆的资源。也就是说，复制资源管理对象时，进行的是“深度拷贝”。
+
+    某些标准字符串类型是由“指向heap内存”的指针构成（那内存被用来存放字符串的组成字符）。这种字符串对象内含一个指针指向一块heap内存。当这样一个字符串对象被复制，不论指针或其所指内存都会被制作出一个复件。这样的字符串展现深度复制(deep copying)行为。
+
+- 转移底部资源的拥有权。
+
+    某些罕见场合下你可能希望确保永远只有一个RAII对象指向一个未加工资源(raw resource)，即使RAII对象被复制依然如此。此时资源的拥有权会从被复制物转移到目标物。一如条款13所述，这是auto_ptr奉行的复制意义。
+
+> 请记住
+
+- 复制RAII对象必须并复制它所管理的资源，所以资源的copying行为决定RAII对象的copying行为。
+
+- 普遍而常见的RAII class copying行为是：抑制copying、施行引用计数法(reference counting)。不过其他行为也都可能被实现。
