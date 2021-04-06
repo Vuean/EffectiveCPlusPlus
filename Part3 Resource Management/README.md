@@ -50,6 +50,58 @@ createinvestment的调用端使用了函数返回的对象后，有责任删除�
 
 - 获得资源后立刻放进管理对象(namaging object)内。
 
-    
+    实际上“以对象管理资源”的观念常被称为“资源取得时机便是初始化时机”(Resource Acquisition Is Initialization; RAII)，因为我们几乎总是在获得一笔资源后于同一语句内以它初始化某个管理对象。
 
 - 管理对象(managing object)运用析构函数确保资源被释放
+
+    不论控制流如何离开区块，一旦对象被销毁（例如当对象离开作用域）其析构函数自然会被自动调用，于是资源被释放。
+
+auto_ptrs有一个不寻常的性质：若通过copy构造函数或copy assignment操作符复制它们，它们会变成null，而复制所得的指针将取得资源的唯一拥有权！
+
+```C++
+    std::auto_ptr<Investment> pInv1(createInverstment());
+
+    std::auto_ptr<Investment> pInv2(pInv1); // 现在pInv2指向对象，pInv1被设为null
+
+    pInv1 = pInv2;  // 现在pInv1指向对象，pInv2为null
+```
+
+这一诡异的复制行为，复加上其底层条件：“受auto_ptrs管理的资源必须绝对没有一个以上的auto_ptr同时指向它”，意味auto_ptrs并非管理动态分配资源的神兵利器。
+
+auto_ptr的替代力案是“引用计数型智慧指针”(reference-counting smart pointer; RCSP)。所谓RCSP也是个智能指针，持续追踪共有多少对象指向某笔资源，并在无人指向它时自动删除该资源。RCSPs提供的行为类似垃圾回收(garbage collection)，不同的是RCSPs无法打破环状引用(cycles of references, 例如两个其实已经没被使用的对象彼此互指，因而好像还处在“被使用”状态)。
+
+TR1的tr1::shared_ptr就是个RCSP，所以可这么写f():
+
+```C++
+    void f()
+    {
+        ...
+        std::tr1::shared_ptr<Investment> pInv(createInvestment());  // 调用factory函数
+        // 使用pInv经由shared_ptr析构函数自动删除pInv
+    }
+```
+
+这段代码看起来几乎和使用auto_ptr的那个版本相同，但shared_ptrs的复制行为正常多了：
+
+```C++
+    void f()
+    {
+        ...
+        std::tr1::shared_ptr<Investment> pInv1(createInvestment()); // pInv1指向createinvestrnent返回物
+        std::tr1::shared_ptr<Investment> pInv2(pInv1);  // pInv1和pInv2指向同一个对象
+        pInv1 = pInv2;
+    }
+    // pInv1和pInv2被销毁它们所指的对象也就被自动销毁
+```
+
+auto_ptr和tr1::shared_ptr两者都在其析构函数内做delete而不是delete[]动作。那意味在动态分配而得的array身上使用auto_ptr或tr1::shared_ptr是个馈主意。
+
+> 请记住
+
+- 为防止资源泄漏，请使用RAII对象，它们在构造函数中获得资源并在析构函数中释放资源。
+
+- 两个常被使用的RAII classes分别是tr1::shared_ptr和auto_ptr。前者通常是较佳选择，因为其copy行为比较直观。若选择auto_ptr，复制动作会使它（被复制物）指向null。
+
+## 条款14：在资源管理类中小心coping行为
+
+Thing carefully about copying behavior in resource-managing classes.
