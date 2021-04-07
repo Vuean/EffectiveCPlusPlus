@@ -190,3 +190,123 @@ Thing carefully about copying behavior in resource-managing classes.
 - 复制RAII对象必须并复制它所管理的资源，所以资源的copying行为决定RAII对象的copying行为。
 
 - 普遍而常见的RAII class copying行为是：抑制copying、施行引用计数法(reference counting)。不过其他行为也都可能被实现。
+
+## 条款15：在资源管理类中提供对原始资源的访间
+
+Provide access to raw resources in resource-managing classes.
+
+资源管理类(resource-managing classes)很棒，排除此等泄漏是良好设计系统的根本性质，避免直接处理原始资源(raw resources)。但这个世界并不完美。许多APIs直接指涉资源，所以只得绕过资源管理对象(resource-managing objects)直接访问原始资源(raw resources)。
+
+举个例子，条款13导入一个观念：使用智能指针如auto_ptr或tr1:: shared_ptr保存factory函数如create Investment的调用结果：
+
+std::tr1::shared_ptr<Investment> pInv(createlnvestment());
+
+假设你希望以某个函数处理Investment对象，像这样：
+
+```C++
+    int daysHeld(const Investment* pi); // 返回投资天数
+```
+
+然后调用：
+
+```C++
+    int days = daysHeld(pInv);  // 错误
+```
+
+但结果是：无法通过编译，因为daysHeld需要的是Investment*指针，但传入的是tr1::shared_ptr<Investment>的对象。
+
+这个时候需要一个函数可将RAII class对象(本例为tr1:: shared_ptr)转换为其所内含的原始资源(本例为底部之Investment*)。有两个做法可以达成目标：显式转换和隐式转换。
+
+tr1::shared_ptr和auto_ptr都提供一个get成员函数，用来执行显式转换，也就是它会返回智能指针内部的原始指针(的副本)：
+
+```C++
+    int days = daysHeld(pInv.get());// 将pInv内的原始指针传给daysHeld
+```
+
+同样，和所有的智能指针一样，tr1::shared_ptr和auto_ptr也重载了指针取值(pointer dereferencing)操作符(operator->和operator*)，它们允许隐式转换至底部原始指针：
+
+```C++
+    class Investment{   // investment继承体系的根类
+    public:
+        bool isTaxFree() const;
+    };
+    Investment* createInvestment(); // factory函数
+    std::tr1::shared_ptr<Investment> pi1(createInvestment());   // 令tr1::shared_ptr管理一笔资源
+    bool taxable1 = !(pi1.isTaxFree());// 经由operator->访问资源
+    ...
+    std::auto_ptr<Investment> pi2(createInvestment());  // 令auto_ptr管理一笔资源
+    bool taxable2 = !((*pi2).isTaxFree());  // 经由operator*访问资源
+```
+
+由于有时候还是必须取得RAII对象内的原始资源，某些RAII class设计者想法是提供**一个隐式转换函数**。考虑下面这个用于字体的RAII class（对CAPI而言字体是一种原生数据结构）:
+
+```C++
+    FontHandle getFont();   // 这是个CAPI。
+    void releaseFont(FontHandle fh);    // 来自同组CAPI
+    class Font{
+    public:
+        // 获得资源，采用pass-by-value，因为CAPI这么做
+        explicit Font(FontHandle fh) : f(fh)
+        {}
+        // 释放资源
+        ~Font() {releaseFont(f);}
+    private:
+        FontHandle f;
+    };
+```
+
+假设有大量与字体相关的CAPI，它们处理的是FontHandles，那么“将Font对象转换为FontHandle”会是一种很频繁的需求。Font class可为此提供一个显式转换函数，像get那样：
+
+```C++
+    class Font{
+    public:
+        FontHandle get() const {return f;}  // 显示转换函数
+    };
+```
+
+不幸的是这使得客户每当想要使用API时就必须调用get：
+
+```C++
+    void changeFontSize(FontHandle f, int newSize);
+    Font f(getFont());
+    int newFontSize;
+    changeFontSize(f.get(), newFontSize);
+```
+
+某些程序员可能会认为，如此这般地到处要求显式转换，足以使人们倒尽胃口，不再愿意使用这个class，从而增加了泄漏字体的可能性，而Font class的主要设计目的就是为了防止资源（字体）泄漏。
+
+另一个办法是令Font提供隐式转换函数，转型为FontHandle：
+
+```C++
+    class Font{
+    public:
+        operator FontHandle() const {return f;}  // 隐式转换函数
+    };
+```
+
+这使得客户调用CAPI时比较轻松且自然：
+
+```C++
+    Font f(getFont());
+    int newFontSize;
+    changeFontSize(f, newFontSize);
+```
+
+但是这个隐式转换会增加错误发生机会。例如客户可能会在需要Font时意外创建一个FontHandle：
+
+```C++
+    Font f1(getFont());
+    FontHandle f2 = f1;
+```
+
+提供显示转化函数还是隐式转换函数，取决于RAII class被设计执行的特定工作，以及被使用的情况。
+
+> 请记住
+
+- APIs往往要求访问原始资源(raw resources)，所以每一个RAII class应该提供一个“取得其所管理之资源”的办法。
+
+- 对原始资源的访问可能经由显式转换或隐式转换。一般而言显式转换比较安全，但隐式转换对客户比较力使。
+
+## 条款16: 成对使用new和delete时要采取相同形式
+
+Use the same form in corresponding uses of new and delete
