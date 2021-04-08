@@ -310,3 +310,40 @@ tr1::shared_ptr和auto_ptr都提供一个get成员函数，用来执行显式转
 ## 条款16: 成对使用new和delete时要采取相同形式
 
 Use the same form in corresponding uses of new and delete
+
+以下动作有什么错？
+
+```C++
+    std::string* stringArray = new std::string[lOO];
+    delete stringArray;
+```
+
+stringArray所含的100个string对象中的99个不太可能被适当删除，因为它们的析构函数很可能没被调用。
+
+当使用new(也就是通过new动态生成一个对象)，有两件事发生。第一，**内存被分配出来**。第二，**针对此内存会有一个（或更多）构造函数被调用**。
+
+当使用delete，也有两件事发生：**针对此内存会有一个（或更多）析构函数被调用**，**然后内存才被释放**。delete的最大问题在于：即将被删除的内存之内究竟存有多少对象？这个问题的答案决定了有多少个析构函数必须被调用起来。
+
+上述问题也可以表述为：**即将被删除的那个指针，所指的是单一对象或对象数组**？
+
+更明确地说，**数组所用的内存通常还包括“数组大小”的记录**，以便delete知道需要调用多少次析构函数。单一对象的内存则没有这笔记录。
+
+对一个指针使用delete时，通过在delete后加上中括号，可使得delete认定指针指向一个数组，否则认定指针指向单一对象。
+
+```C++
+    std::string* stringPtr1 = new std::string;
+    std::string* stringPtr2 = new std::string[100];
+
+    delete stringPtr1;      // 删除一个对象
+    delete[] stringPtr2;    // 删除一个有对象组成的数组
+```
+
+当调用new时使用[ ]，那么在对应调用delete时也使用[ ]。如果你调用new时没有使用[ ]，那么也不该在对应调用delete时使用[ ]。
+
+> 请记住
+
+- 当调用new时使用[ ]，那么在对应调用delete时也使用[ ]。如果你调用new时没有使用[ ]，那么也不该在对应调用delete时使用[ ]。
+
+## 条款17：以独立语句将newed对象置入智能指针
+
+Store newed objects in smart pointers in standalone statements.
