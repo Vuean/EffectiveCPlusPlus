@@ -199,7 +199,7 @@ Provide access to raw resources in resource-managing classes.
 
 举个例子，条款13导入一个观念：使用智能指针如auto_ptr或tr1:: shared_ptr保存factory函数如create Investment的调用结果：
 
-std::tr1::shared_ptr<Investment> pInv(createlnvestment());
+`std::tr1::shared_ptr<Investment> pInv(createlnvestment());`
 
 假设你希望以某个函数处理Investment对象，像这样：
 
@@ -213,7 +213,7 @@ std::tr1::shared_ptr<Investment> pInv(createlnvestment());
     int days = daysHeld(pInv);  // 错误
 ```
 
-但结果是：无法通过编译，因为daysHeld需要的是Investment*指针，但传入的是tr1::shared_ptr<Investment>的对象。
+但结果是：无法通过编译，因为daysHeld需要的是Investment*指针，但传入的是`tr1::shared_ptr<Investment>`的对象。
 
 这个时候需要一个函数可将RAII class对象(本例为tr1:: shared_ptr)转换为其所内含的原始资源(本例为底部之Investment*)。有两个做法可以达成目标：显式转换和隐式转换。
 
@@ -347,3 +347,63 @@ stringArray所含的100个string对象中的99个不太可能被适当删除，�
 ## 条款17：以独立语句将newed对象置入智能指针
 
 Store newed objects in smart pointers in standalone statements.
+
+假设我们有个函数用来揭示处理程序的优先权，另一个函数用来在某动态分配所得的Widget上进行某些带有优先权的处理：
+
+```C++
+    int priority();
+    void processWidget(std::tr1::shared_ptr<Widget> pw, int priority);
+```
+
+由于谨记“以对象管理资源”的智慧铭言，processWidget决定对其动态分配得来的Widget运用智能指针(这里采用tr1::shared_ptr)。
+
+调用processWidget：
+
+```C++
+    processWidget(new Widget, priority());
+```
+
+上述表达式不会通过编译，tr1::shared_ptr构造函数需要一个原始指针(raw pointer)，但该构造函数是个explicit构造函数，无法进行隐式转换，将得自“newWidget”的原始指针转换为processWidget所要求的tr1::shared_ptr。如果写成这样就可以通过编译：
+
+```C++
+    processWidget(std::tr1::shared_ptr<Widget>(new Widget), priority());
+```
+
+但上述调用可能造成资源泄露。
+
+编译器产出一个processWidget调用码之前，必须首先核算即将被传递的各个实参。上述第二实参只是一个单纯的对priority函数的调用，但第实参`std::tr1::shared_ptr<Widget>(new Widget)`由两部分组成：
+
+- 执行“new Widget”表达式
+
+- 调用tr1::shared_ptr构造函数
+
+于是在调用processWidget之前，编译器必须创建代码，做以下三件事：
+
+- 调用priority
+
+- 执行“new Widget”
+
+- 调用tr1::shared_ptr构造函数
+
+上述三个步骤，可以明确执行“new Widget”发生在调用tr1::shared_ptr构造函数之前，但是调用priority可以排在第一、第二或第三执行。
+
+如果编译器选择以第二顺位执行它（说不定可因此生成更高效的代码，谁知道！），最终获得这样的操作序列：
+
+1. 执行“new Widget”
+
+2. 调用priority
+
+3. 调用tr1::shared_ptr构造函数
+
+万一priority的调用导致异常，此时“new Widget”返回的指针将会遗失，但它又还没有被置入tr1::shared_ptr内，所以会造成资源泄露。因为在“资源被创建(经由“new Widget”)”和“资源被转换为资源管理对象”两个时间点之间有可能发生异常干扰。
+
+避免这类问题的办法很简单：使用分离语句，分别写出(1)创建Widge，(2)将它置入一个智能指针内，然后再把那个智能指针传给processWidget：
+
+```C++
+    std::tr1::shared_pre<Widget> pw(new Widget);
+    processWidget(pw, priority());
+```
+
+> 请记住
+
+- 以独立语句将newed对象存储于（置入）智能指针内。如果不这样做，一旦异常被抛出，有可能导致难以察觉的资源泄漏。
