@@ -189,3 +189,46 @@ Prefer pass-by-reference-to-const to pass-by-value.
         virtual void display() const;
     };
 ```
+
+所有Window对象都带有一个名称，你可以通过name函数取得它。所有窗口都可显示，你可以通过display函数完成它。display是个virtual函数，这意味简易朴素的base class Window对象的显示方式和华丽高贵的`WindowWithScrollBars`对象的显示方式不同。
+
+现在假设你希望写个函数打印窗口名称，然后显示该窗口。下面是错误示范：
+
+```C++
+    // 不正确！参数可能被切割。
+    void printNameAndDisplay(Window w){
+        std::cout << w.name();
+        w.display();
+    }
+```
+
+当调用上述函数并交给它个`WindowWithScrollBars`对象：
+
+```C++
+    WindowWithScrollBars wwsb;
+    printNameAndDisplay(wwsb);
+```
+
+因为是pass by value，所以参数w会被构造成为一个Window对象，将会造成wwsb是个`WindowWithScrollBars`对象的所有特化信息都会被切除。
+
+解决切割(slicing)问题的办法，就是以by reference-to-const的方式传递w：
+
+```C++
+    // 很好，参数不会被切割
+    void printNameAndDisplay(const Window& w){
+        std::cout << w.name();
+        w.display();
+    }
+```
+
+references往往以指针实现出来，因此pass by reference通常意味真正传递的是指针。对于内置类型而言，pass by value往往比pass by reference的效率高些。
+
+> 请记住
+
+- 尽量以pass-by-reference-to-const替换pass-by-value。前者通常比较高效，并可避免切割问题(slicing problem)。
+
+- 以上规则并不适用于内置类型，以及STL的迭代器和函数对象。对它们而言，pass-by-value往往比较适当。
+
+## 条款21：必须返回对象时，别妄想返回其reference
+
+Don't try to return a reference when you must return an object.
