@@ -140,3 +140,52 @@ C++就像在其他OOP(面向对象编程)语言一样，当定义一个新class�
 ## 条款20：宁以pass-by-reference-to-const替换pass-by-value
 
 Prefer pass-by-reference-to-const to pass-by-value.
+
+通常则函数参数都是以实际实参的复件（副本）为初值，这些副本都是由对象的copy构造函数产出，这可能使得pass-by-value操作代价过高。考虑以下class继承体系：
+
+```C++
+    class Person{
+    public:
+        Person();
+        virtual ~Person();
+    private:
+        std::string name;
+        std::string address;
+    };
+    class Student : public Person{
+    public:
+        Student();
+        ~Student();
+    private:
+        std::string schoolName;
+        std::string schoolAddress;
+    }
+```
+
+现考虑，调用函数validateStudent，后者需要一个Student实参(by value)并返回它是否有效：
+
+```C++
+    bool validateStudent(Student s);    // 函数已by value方式接收参数
+    Student plato;
+    bool platoIsOK = validdateStudent(plato);
+```
+
+当上述函数被调用时，Student的copy构造函数会被调用，以plato为蓝本将s初始化。同样明显地，当validateStudent返回时s会被销毁。因此，对此函数而言，参数的传递成本是“一次Student copy构造函数调用，加上一次Student析构函数调用”。
+
+通过pass by reference-to-const可回避所有那些构造和析构动作：`bool validateStudent(const Student& s);`。
+
+这种传递方式比传值的效率高得多：没有任何构造函数或析构函数被调用，因为没有任何新对象被创建。
+
+以by reference方式传递参数也可以避免**slicing**(对象切割)问题，当一个derived class对象以by value方式传递并被视为一个base class对象，base class的copy构造函数会被调用，而“造成此对象的行为像个derived class对象”的那些特化性质全被切割掉了，仅仅留下一个base class对象。假设你在一组classes上工作，用来实现个图形窗口系统：
+
+```C++
+    class Window{
+    public:
+        std::string name() const;   // 返回窗口名称
+        virtual void display() const;   // 显示窗口和其内容
+    };
+    class WindowWithScrollBars : public Window{
+    public:
+        virtual void display() const;
+    };
+```
