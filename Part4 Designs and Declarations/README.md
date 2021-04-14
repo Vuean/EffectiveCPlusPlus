@@ -329,3 +329,48 @@ Don't try to return a reference when you must return an object.
 ## 条款22: 将成员变量声明为private
 
 Declare data members private.
+
+本条款主要阐述为什么成员变量不该是public，所有反对public成员变量的论点同样适用于protected成员变量，成员变量应该是private。
+
+如果成员变量不是public，客户唯一能够访问对象的办法就是通过成员函数。如果令成员变量为public，每个人都可以读写它，但如果以函数取得或设定其值，就可以实现出“不允许访问”、“只读访问”以及“读写访问”：
+
+```C++
+    class AccessLevels{
+    public:
+        int getReadOnly() const { return readOnly;}
+        void getReadWrite(int value){readWrite = value;}
+        int getReadWrite(){return readWrite;}
+        void setWriteOnly(int value){writeOnly = value;}
+    private:
+        int noAccess;       // 对此int无任何访问动作
+        int readOnly;       // 对此int做只读访问
+        int readWrite;      // 对此int做读写访问
+        int writeOnly;      // 对此int做惟写访问
+    }；
+```
+
+另外，通过函数访问成员变量，日后可改变某个计算替换这个成员变量，而class客户一点也不会知道class的内部实现已经起了变化。
+
+举个例子，假设你正在写一个自动测速程序，当汽车通过，其速度便被计算并填入一个速度收集器内：
+
+```C++
+    class SpeedDataCollection{
+    public:
+        void addValue(int speed);   // 添加一笔新数据
+        double averageSoFar() const;    // 返回平均速度
+    };
+```
+
+考虑成员函数averageSoFar。做法之一是在class内设计一个成员变量，记录至今以来所有速度的平均值。当averageSoFar被调用，只需返回那个成员变置就好。另一个做法是令averageSoFar每次被调用时重新计算平均值，此函数有权力调取收集器内的每一笔速度值。
+
+第一种做法（随时保存平均值）会使得每一个SpeedDataCollection对象变大，因为你必须为用来存放目前平均值、累积总量、数据点数的每一个成员变量分配空间。然而averageSoFar却可因此而十分高效；它可以只是一个返回目前平均值的inline函数。相反地，“被询问才计算平均值”会使得averageSoFar执行较慢，但每一个SpeedDataCollection对象比较小。
+
+> 请记住
+
+- 切记将成员变量声明为private。这可赋予客户访问数据的一致性、可细微划分访问控制、允诺约束条件获得保证，并提供class作者以充分的实现弹性。
+
+- protected并不比public更具封装性。
+
+## 条款23：宁以non-member、non-friend替换member函数
+
+Perfer non-member non-friend functions to member functions
