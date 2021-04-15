@@ -374,3 +374,53 @@ Declare data members private.
 ## 条款23：宁以non-member、non-friend替换member函数
 
 Perfer non-member non-friend functions to member functions
+
+想象有个class用来表示网页浏览器。这样的class可能提供的众多函数中，有一些用来清除下载元素高速缓存区(cache of downloaded elements)、清除访问过的URLs的历史记录(history of visited URLs)、以及移除系统中的所有cookies：
+
+```C++
+    class WebBrowser{
+    public:
+        void clearCache();
+        void clearHistory();
+        void removeCookies();
+    };
+```
+
+许多用户会想一整个执行所有这些动作，因此WebBrowser也提供这样一个函数：
+
+```C++
+    class WebBrowser{
+    public:
+        void clearEverything(); // 调用clearCache、clearHistory、removeCookies
+    };
+```
+
+当然，这一机能也可由一个non-member函数调用适当的member函数而提供出来：
+
+```C++
+    void clearBrowser(WebBrowser& wb){
+        wb.clearCache();
+        wb.clearHistory();
+        wb.removeCookies();
+    }
+```
+
+可能很直观的根据面向对象守则要求认为，数据以及操作数据的那些函数应该被捆绑在一块，这意味它建议member函数是较好的选择。但其实不然，面向对象守则要求**数据应该尽可能被封装**，然而与直观相反地，member函数clearEverything带来的封装性比non-member函数clearBrowser低。
+
+至于其中原因，需要从封装开始讨论。如果某些东西被封装，它就不再可见。越多东西被封装，越少人可以看到它。因此，越多东西被封装，我们改变那些东西的能力也就越大。这就是我们首先推崇封装的原因：**它使我们能够改变事物而只影响有限客户**。
+
+对于对象内的数据，愈少代码可以看到数据（也就是访问它），愈多的数据可被封装，而我们也就愈能自由地改变对象数据。
+
+成员变量设为private后，那么能够访问private成员变量的函数只有class的member函数加上friend函数而已。因此，在一个member函数和一个non-member、non-friend函数中做抉择，而且两者提供相同机能，那么，导致较大封装性的是non-member、non-friend函数，因为它并不增加“能够访问class内之private成分”的函数数量。即不降低类的封装性。
+
+在这一点上有两件事情值得注意。第一，这个论述只适用于non-member、non-friend函数。friends函数对class private成员的访问权力和member函数相同，因此两者对封装的冲击力道也相同。从封装的角度看，这里的选择关键并不在member和non-member函数之间，而是在member和non-member、non-friend函数之间。
+
+第二件值得注意的事情是，只因在意封装性而让函数“成为class的non-member”，并不意味它“不可以是另一个class的member”。
+
+> 请记住
+
+- 宁可拿non-member、non-friend函数替换member函数。这样做可以增加封装件、包裹弹性(packaging flexibility)和机能扩充性。
+
+## 条款24：若所有参数皆需类型转换，请为此采用non-member函数
+
+Declare non-member functions when type conversions should apply to all parameters.
