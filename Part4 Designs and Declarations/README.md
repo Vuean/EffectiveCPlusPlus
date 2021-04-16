@@ -424,3 +424,89 @@ Perfer non-member non-friend functions to member functions
 ## 条款24：若所有参数皆需类型转换，请为此采用non-member函数
 
 Declare non-member functions when type conversions should apply to all parameters.
+
+令classes支持隐式类型转换通常是个糟糕的主意。当然这条规则有其例外，最常见的例外是在建立数值类型时。假设设计一个class用来表现有理数，允许整数“隐式转换”为有理数似乎颇为合理。
+
+```C++
+    class Rational{
+    public:
+        Ration(int numerator = 0, int denominator = 1);
+        int numerator() const;
+        int denominator() const;
+        const Rational operator* (const Rational& rhs) const;
+    private:
+        ...
+    };
+```
+
+声明operator*函数，实现将两个有理数相乘：
+
+```C++
+    Rational oneEight(1, 8);
+    Rathonal oneGalf(1, 2);
+    Rational result = oneHalf * oneEight;
+    result = result * oneEight;
+```
+
+但如果想要实现Rational与int相乘呢？结果发现只有一半行得通：
+
+```C++
+    result = oneHalf * 2;   // 可行
+    result = 2 * oneHalf;   // 不可行
+```
+
+以函数形式重写，将会更清楚的表明原因：
+
+```C++
+    result = oneHalf.operator*(2);   // 可行
+    result = 2.operator*(oneHalf);   // 不可行
+```
+
+因为，oneHalf是一个内含`operator*`函数的class对象，所以可以调用改函数。然而整数2并没有响应的class，也就没有`operator*`成员函数。
+
+但回头查看第一个成功的调用。其实函数内部参数为int型的2，但其实`Rational::operator*`的参数应该是一个Rational对象，其中能成功调用的关键在于发生了**隐式类型转换**(**implicit type conversion**)。
+
+编译器在这里自动地将int变成了Rational：
+
+```C++
+    const Rational temp(2); // 根据2建立了一个临时的Rational对象
+    result = oneHalf * temp;
+```
+
+**当然，只因为涉及non-explicit构造函数，编译器才会这样做。如果Rational构造函数是explicit，**以下语句没有一个可通过编译：
+
+```C++
+    result = oneHalf * 2;   // 错误，在explicit构造函数的情况下，无法将2转换为一个Rational
+    result = 2 * oneHalf;   // 不可行
+```
+
+针对第二个无法成功调用的案例，发现只有**当参数被列于参数列(parameter list)内，这个参数才是隐式类型转换的合格参与者**。
+
+为了实现混合式算术运算，可以将operator*成为一个non-member函数：
+
+```C++
+    class Rational{
+        // 不包括operator*
+    };
+
+    const Rational operator*(const Rational& lhs, const Rational& rhs){
+        return Rational(lhs.numerator() * rhs.numerator(), lsh.denominator() * rhs.denominator());
+    }
+
+    Rational oneFourth(1, 4);
+    Rational result;
+    result = oneFourth * 2;
+    result = 2 * oneFourth;
+```
+
+operator*是否应该成为Rational class的一个friend函数呢？
+
+答案是否定的。member函数的反面是non-member函数，不是friend函数。
+
+> 请记住
+
+- 如果你需要为某个函数的所有参数（包括被this指针所指的那个隐喻参数）进行类型转换，那么这个函数必须是个non-member。
+
+## 条款25: 考虑写出一个不抛异常的swap函数
+
+Consider support for a non-throwing swap.
