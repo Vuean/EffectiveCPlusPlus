@@ -510,3 +510,76 @@ operator*是否应该成为Rational class的一个friend函数呢？
 ## 条款25: 考虑写出一个不抛异常的swap函数
 
 Consider support for a non-throwing swap.
+
+swap(置换)两对象值，意思是将两对象的值彼此赋予对方，其实现方式：
+
+```C++
+    namespace std{
+        template<typename T>
+        void swap(T& a, T& b){
+            T temp(a);
+            a = b;
+            b = temp;
+        }
+    }
+```
+
+只要类型T支持copying(通过copy构造函数和copy assignment操作符完成)，缺省的swap实现代码就可完成置换类型为T的对象。这缺省的swap实现版本涉及三个对象的复制：a复制到temp，b复制到a，以及temp复制到b。但是对某些类型而言，这些复制动作无一必要：其中最主要的就是“**以指针指向一个对象，内含真正数据**”那种类型。这种设计的常见表现形式是所谓“pimpl手法”(pimpl：pointer to implementation)。如果以这种手法设计Widget class，看起来会像这样：
+
+```C++
+    // 针对Widget数据而设计的class;
+    class WidgetImpl{
+    public:
+        ...
+    private:
+        // 可能有很多数据，意味着复制时间很长
+        int a, b, c;
+        std::vector<double> v;
+    };
+```
+
+```C++
+    class Widget{
+    public:
+        Widget(const Widget& rhs);
+        // 复制Widget时，令它复制其WidgetImpl对象。
+        Widget& operator=(const Widget& rhs){
+            *pImpl = *(rhs.pImpl)
+        }
+    private:
+        WidgetImpl* pImpl
+    };    
+```
+
+一旦要置换两个Widget对象值，我们唯一需要做的就是置换其pImpl指针，但缺省的swap算法不知道这一点。
+
+我们希望能够告诉std::swap：当Widgets被置换时真正该做的是置换其内部的pImpl指针。确切实践这个思路的一个做法是：将std::swap针对Widget特化。下面是基本构想，但目前这个形式无法通过编译：
+
+```C++
+    namespace std{
+        template<> void swap<Widget>(Widget& a, Widget& b){
+            swap(a.pImpl, b.pImpl);
+        }
+    }
+```
+
+但是一如稍早我说，这个函数无法通过编译。因为它企图访问a和b内的pImpl指针，而那却是private。我们可以将这个特化版本声明为friend，但和以往的规矩不太一样：我们令Widget声明一个名为swap的public成员函数做真正的置换工作，然后将std::swap特化，令它调用该成员函数：
+
+```C++
+    class Widget{
+    public:
+        void swap(Widget& other){
+            using std::swap;
+            swap(pImpl, other.pImpl);
+        }
+    };
+    // 修订后的std::swap特化版本
+    namespace std{
+        template<>
+        void swap<Widget>(Widget& a, Widget& b){
+            a.swap(b);
+        }
+    }
+```
+
+这种做法不只能够通过编译，还与STL容器有一致性，因为所有STL容器也都提供有public swap成员函数和std::swap特化版本（用以调用前者）。
