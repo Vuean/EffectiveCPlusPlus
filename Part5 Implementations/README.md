@@ -70,3 +70,60 @@ Postpone variable definitions as long as possible.
 ## 条款27: 尽量少做转型动作
 
 Minimize casting.
+
+类型转换的常见三种语法形式：
+
+```C++
+    // 旧式类型转换（old-style class）
+    // C风格的类型转换动作：
+    (T)expression   // 将expression转型为T
+    // 函数风格的类型转换动作：
+    T(expression)   // 将expression转型为T
+```
+
+C++还提供四种新式类型转换：
+
+```C++
+    const_cast<T>(expression)
+    dynamic_cast<T>(expression)
+    reinterpret_cast<T>(expression)
+    static_cast<T>(expression)
+```
+
+- `const_cast`通常被用来将对象的常量性转除(cast away the constness)。它也是唯一有此能力的C++-style转型操作符。
+
+- `dynamic_cast`主要用来执行“安全向下转型”(safe downcasting)，也就是用来决定某对象是否归属继承体系中的某个类型。它是唯一无法由旧式语法执行的动作，也是唯一可能耗费重大运行成本的转型动作。
+
+- `reinterpret_cast`意图执行低级转型，实际动作（及结果）可能取决于编译器，这也就表示它不可移植。
+
+- `static_cast`用来强迫隐式转换(implicit conversions)。
+
+新式转型动作优点在于：第一，它们很容易在代码中被辨识出来；第二，各转型动作的目标愈窄化，编译器愈可能诊断出错误的运用。
+
+常用的旧式类型转换的地方在，调用一个explicit构造函数将一个对象传递给一个函数时：
+
+```C++
+    class Widget{
+    public:
+        explicit Widget(int size);
+    };
+    void doSomeWork(const Widget& w);
+    doSomeWork(Widget(15)); // 以一个int加上函数风格的类型转换动作创建一个Widget
+    doSomeWork(static_cast<Widget>(15));    // 以一个int加上C++风格的类型转换动作创建一个Widget
+```
+
+任何一个类型转换（不论是通过转型操作而进行的显式转换，或通过编译器完成的隐式转换）往往真的令编译器编译出运行期间执行的码。如：
+
+```C++
+    int x, y;
+    double d = static_cast<double>(x) / y;  // 使用浮点数除法
+```
+
+```C++
+    class Base{...};
+    class Derived : public Base{...};
+    Derived d;
+    Base* pb = &d;  // 隐式的将Derived*转换为Base*
+```
+
+上述建立一个base class指针指向－个derived class对象，但有时候上述的两个指针值并不相同。这种情况下会有个偏移量(offset)在运行期被施行于`Derived*`指针身上，用以取得正确的`Base*`指针值。
