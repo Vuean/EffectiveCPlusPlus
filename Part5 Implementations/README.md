@@ -127,3 +127,43 @@ C++还提供四种新式类型转换：
 ```
 
 上述建立一个base class指针指向－个derived class对象，但有时候上述的两个指针值并不相同。这种情况下会有个偏移量(offset)在运行期被施行于`Derived*`指针身上，用以取得正确的`Base*`指针值。
+
+另一件关于转型的有趣事情是：我们很容易写出某些似是而非的代码（在其他语言中也许真是对的）。例如许多应用框架(application frameworks)都要求derived classes内的virtual函数代码的第一个动作就先调用base class的对应函数。假设我们有个Window base class和一个SpecialWindow derived class，两者都定义了virtual函数onResize。进一步假设SpecialWindow的onResize函数被要求首先调用Window的onResize。下面是实现方式之一，它看起来对，但实际上错：
+
+```C++
+    class Window{
+    public:
+        virtual void onResize(){...}
+    };
+
+    class SpecialWindow : public Window{
+    public:
+        virtual void onResize(){
+            // 实现将*this转换为Window，再调用其onResize，这可不行。
+            static_cast<Window>(*this).onResize();
+            ...// 这里执行SpecialWindow专属行为
+        }
+    };
+```
+
+上述函数中预期是：将*this转换为Window，对函数onResize调用，实现调用Window::onResize。但是实际上，调用的并不是当前对象上的函数，而实稍早类型转换动作所建立的一个`*this`对象的base class部分的展示副本身上的onResize。
+
+上述代码并非在当前对象身上调用Window::onResize之后又在该对象身上执行SpecialWindow专属动作。不，**它是在“当前对象之base class成分”的副本上调用Window::onResize，然后在当前对象身上执行SpecialWindow专属动作**。
+
+如果Window::onResize修改了对象内容，当前对象其实没被改动，改动的是副本。然而SpecialWindow::onResize内如果也修改对象，当前对象真的会被改动。这使当前对象进入一种“伤残”状态：其base class成分的更改没有落实，而derived class成分的更改倒是落实了。
+
+解决办法是：拿掉类型转换动作，真实的告诉编译器真正的述求。
+
+```C++
+    class SpecialWindow : public Window
+    {
+    public:
+        virtual void onResize(){
+            Window::onResize(); // 调用Window::onResize作用于*this身上
+        }
+    };
+```
+
+这个例子也说明，如果你发现你自己打算转型，那活脱是个警告信号：你可能正将局面发展至错误的方向上。如果你用的是dynamic_cast更是如此。
+
+dynamic_cast的许多实现版本执行速度相当慢。之所以需要dynamic_cast，通常是因为你想在一个你认定为derived class对象身上执行derived class操作函数，但你的手上却只有一个”指向base”的pointer或reference，你只能靠它们来处理对象。通常有两种一般性方法可避免上述问题：
