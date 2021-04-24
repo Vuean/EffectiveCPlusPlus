@@ -167,3 +167,80 @@ C++还提供四种新式类型转换：
 这个例子也说明，如果你发现你自己打算转型，那活脱是个警告信号：你可能正将局面发展至错误的方向上。如果你用的是dynamic_cast更是如此。
 
 dynamic_cast的许多实现版本执行速度相当慢。之所以需要dynamic_cast，通常是因为你想在一个你认定为derived class对象身上执行derived class操作函数，但你的手上却只有一个”指向base”的pointer或reference，你只能靠它们来处理对象。通常有两种一般性方法可避免上述问题：
+
+第一，使用容器并在其中存储直接指向derived class对象的指针(通常是智能指针)，如此便消除了“通过base class接口处理对象”的需要。假设先前的Window/SpecialWindow继承体系中只有SpecialWindows才支持闪烁效果，试着不要这样做：
+
+```C++
+    class Window{...};
+    class SpecialWindow : public Window{
+    public:
+        void blink();
+    };
+
+    typedef std::vector<std::tr1::shared_ptr<Window>> VPW;
+    VPW winPtrs;
+
+    for(VPW::iterator iter = winPtrs.begin(); iter != winPtrs.end(); iter++){
+        if(SpecialWindow* psw = dynamic_cast<SpecialWindow*>(iter->get()))
+            psw->blink();
+    }
+```
+
+应该改为：
+
+```C++
+    typedef std::vector<std::tr1::shared_ptr<SpecialWindow>> VPSW;
+    VPSW winPtrs;
+    for(VPSW::iterator iter = winPtrs.begin(); iter != winPtrs.end(); iter++)
+        (*iter)->blink();
+```
+
+另一种做法可让你通过base class接口处理“所有可能的各种Window派生类”，那就是在base class内提供virtual函数做你想对各个Window派生类做的事。举个例子，虽然只有SpecialWindows可以闪烁，但或许将闪烁函数声明于base class内并提供一份“什么也没做＂的缺省实现码是有意义的：
+
+```C++
+    class Window{
+    public:
+        virtual void blink() {} // 缺省实现代码;
+    };
+
+    class SpecialWindow : public Window{
+    public:
+        virtual void blink(){...}   // 在此class内blink做某些事
+    };
+    typedef std::vector<std::tr1::shared_ptr<Window>> VPW;
+    VPW winPtrs;
+    for(VPW::iterator iter = winPtrs.begin(); iter != winPtrs.end(); iter++)
+        (*iter)->blink();
+```
+
+不论哪一种写法——“使用类型安全容器”或“将virtual函数往继承体系上方移动”——都并非放之四海皆准，但在许多情况下它们都提供一个可行的dynamic_cast替代方案。
+
+但是需要注意的是，要绝对避免所谓的“连串(cascading) dynamic_cast”，即：
+
+```C++
+    class Window{...};
+    ...
+    typedef std::vector<std::tr1::shared_ptr<Window>> VPW;
+    VPW winPtrs;
+    ...
+    for(VPW::iterator iter = winPtrs.begin(); iter != winPtrs.end(); iter++){
+        if(SpecialWindow1* psw1) = dynamic_cast<SpecialWindow1*>(iter->get()){...}
+        else if(SpecialWindow2* psw2) = dynamic_cast<SpecialWindow2*>(iter->get()){...}
+        else if(SpecialWindow3* psw3) = dynamic_cast<SpecialWindow3*>(iter->get()){...}
+        ...
+    }
+```
+
+这样产生出来的代码又大又慢，而且基础不稳，因为每次Window class继承体系一有改变，所有这一类代码都必须再次检阅看看是否需要修改。例如一旦加入新的derived class，或许上述连串判断中需要加入新的条件分支。这样的代码应该总是以某些“基于virtual 函数调用”的东西取而代之。
+
+> 请记住
+
+- 如果可以，尽量避免转型，特别是在注重效率的代码中避免dynamic_casts。如果有个设计需要转型动作，试着发展无需转型的替代设计。
+
+- 如果转型是必要的，试着将它隐藏于某个函数背后。客户随后可以调用该函数，而不需将转型放进他们自己的代码内。
+
+- 宁可使用C++-style(新式)转型，不要使用旧式转型。前者很容易辨识出来，而且也比较有着分门别类的职掌。
+
+## 条款28: 避免返回handles指向对象内部成分
+
+Avoid returing "handles" to object internals.
