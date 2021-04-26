@@ -244,3 +244,80 @@ dynamic_cast的许多实现版本执行速度相当慢。之所以需要dynamic_
 ## 条款28: 避免返回handles指向对象内部成分
 
 Avoid returing "handles" to object internals.
+
+假设你的程序涉及矩形。每个矩形由其左上角和右下角表示。为了让一个Rectangle对象尽可能小，你可能会决定不把定义矩形的这些点存放在Rectangle对象内，而是放在一个辅助的struct内再让Rectangle去指它：
+
+```C++
+    class Point{
+    public:
+        Point(int x, int y);
+        void SetX(int newValue);
+        void SetY(int newValue);
+    };
+    struct RectData{
+        Point ulhc; // 左上角
+        Point lrhc; // 右下角
+    };
+    class Rectangle{
+    private:
+        std::tr1::shared_ptr<RecData> pData;
+    };
+```
+
+Rectangle的客户必须能够计算Rectangle的范围，所以这个class提供upperLeft函数和lowerRight函数。Point是个用户自定义类型，函数返回references，代表底层的Point对象：
+
+```C++
+    class Rectangle{
+    public:
+        Point& upperLeft() const {return pData->ulhc;}
+        Point& lowerRight() const {return pData->lrhc;}
+    };
+```
+
+这样的设计可通过编译，但却是错误的。实际上它是自我矛盾的。一方面upperLeft和lowerRight被声明为const成员函数，因为它们的目的只是为了提供客户一个得知Rectangle相关坐标点的方法，而不是让客户修改Rectangle。另一方面两个函数却都返回references指向private内部数据，调用者于是可通过这些references更改内部数据！例如：
+
+```C++
+    Point coord1(0, 0);
+    Point coord2(100, 100);
+    const Rectangle rec(coord1, coord2);    // rec是个const矩形，
+    rec.upperLeft().setX(50);   // rec值被修改
+```
+
+这里请注意，upperLeft的调用者能够使用被返回的reference(指向rec内部的Point成员变量)来更改成员。但rec其实应该是不可变的(const)!
+
+这给我们的启示是：第一，成员变量的封装性最多只等于“返回其reference”的函数的访问级别。本例之中虽然ulhc和lrhc都被声明为private，它们实际上却是public，因为public函数upperLeft和lowerRight传出了它们的references。第二，如果const成员函数传出一个reference，后者所指数据与对象自身有关联，而它又被存储于对象之外，那么这个函数的调用者可以修改那笔数据。
+
+专注于Rectangle class和它的upperLeft以及lowerRight成员函数。我们在这些函数身上遭遇的两个问题可以轻松去除，只要对它们的返回类型加上const即可：
+
+```C++
+    class Rectangle{
+    public:
+        const Point& upperLeft() const { return pData->ulhc;}
+        const Point& upperRight() const { return pData->lrhc;}
+    };
+```
+
+但即使如此，upperLeft和lowerRight还是返回了“代表对象内部”的handles，有可能在其他场合带来问题。更明确地说，它可能导致dangling handles（空悬的号码牌） ：这种handles所指东西（的所属对象）不复存在。这种“不复存在的对象”最常见的来源就是函数返回值。例如某个函数返回GUI对象的外框(bounding box)，这个外框采用矩形形式：
+
+```C++
+    class GUIObject{...};
+    const Rectangle boundingBox(const GUIObject& obj);  // 以by value方式返回一个矩形
+```
+
+现在，客户有可能这么使用这个函数：
+
+```C++
+    GUIObject* pgo;
+    ...
+    const Point* pUpperLeft = &(boundingBox(*pgo).upperLeft());
+```
+
+对boundingBox的调用获得个新的、暂时的Rectangle对象。这个对象没有名称，所以我们权且称它为temp。随后upperLeft作用于temp身上，返回一个reference指向temp的一个内部成分，更具体地说是指向一个用以标示temp的Points。于是pUpperLeft指向那个Point对象。目前为止一切还好，但故事尚未结束，因为在那个语旬结束之后，boundingBox的返回值，也就是我们所说的temp，将被销毁，而那间接导致temp内的Points析构。最终导致pUpperLeft指向一个不再存在的对象；也就是说一旦产出pUpperLeft的那个语句结束，pUpperLeft也就变成空悬、虚吊(dangling)!
+
+> 请记住
+
+- 避免返回handles(包括references、指针、迭代器)指向对象内部。遵守这个条款可增加封装性，帮助const成员函数的行为像个const，并将发生“虚吊号码牌”(dangling handles)的可能性降至最低。
+
+## 条款29: 为“异常安全”而努力是值得的
+
+Strive for exception-safe code.
