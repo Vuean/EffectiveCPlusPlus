@@ -321,3 +321,55 @@ Rectangle的客户必须能够计算Rectangle的范围，所以这个class提供
 ## 条款29: 为“异常安全”而努力是值得的
 
 Strive for exception-safe code.
+
+假设有个class用来表现夹带背景图案的GUI菜单。这个class希望用于多线程环境，所以它有个互斥器(mutex)作为并发控制(concurrency control)之用：
+
+```C++
+    class PrettyMenu{
+    public:
+        void changeBackground(std::istream& imgSrc);    // 改变背景图像
+    private:
+        Mutex mutes;    // 互斥器
+        Image* bgImage; // 目前的背景图像
+        int imageChanges;   // 背景图像被改变的次数
+    };
+```
+
+下面是PrettyMenu的changeBackground函数的一个可能实现：
+
+```C++
+    void PrettyMenu::changeBackground(std::istrearn& imgSrc){
+        lock(&mutex);   // 取得互斥器
+        delete bgImage; // 摆脱旧的背景图像
+        ++imageChanges; // 修改图像变更次数
+        bgImage = new Image(imgSrc);    // 安装新的背景图像
+        unlock(&mutex); // 释放互斥器
+    }
+```
+
+从“异常安全性”的观点来看，这个函数很糟。“异常安全”有两个条件，而这个函数没有满足其中任何—个条件。
+
+当异常被抛出时，带有异常安全性的函数会：
+
+- 不泄漏任何资源。上述代码没有做到这一点，因为一旦"new Image(imgSrc)"导致异常，对unlock的调用就绝不会执行，于是互斥器就永远被把持住了。
+
+- 不允许数据败坏。如果"new Image(imgSrc)"抛出异常，bgirnage就是指向一个已被删除的对象，irnageChanges也已被累加，而其实并没有新的图像被成功安装起来。
+
+解决资源泄漏的问题很容易，因为条款13讨论过如何以对象管理资源，而条款14也导入了Lock class作为－种“确保互斥器被及时释放”的方法：
+
+```C++
+    void PrettyMenu::changeBackground(std::istrearn& imgSrc){
+        lock(&mutex);
+        delete bgImage;
+        ++imageChanges;
+        bgImage = new Image(imgSrc);
+    }
+```
+
+异常安全函数(Exception-safe functions)提供以下三个保证之一：
+
+- 基本承诺：如果异常被抛出，程序内的任何事物仍然保持在有效状态下。
+
+- 强烈保证：如果异常被抛出，程序状态不改变。
+
+- 不抛掷(nothrow)保证，承诺绝不抛出异常，因为它们总是能够完成它们原先承诺的功能。
