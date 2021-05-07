@@ -387,3 +387,43 @@ todo
 ## 条款30：透彻了解inlining的里里外外
 
 Understand the ins and outs of inlining.
+
+inline函数背后的整体观念是，**将“对此函数的每一个调用”都以函数本体替换之**。这可能会增加代码目标码(object code)大小。过度的使用inline会造成程序体积太大，造成的代码膨胀还会导致额外的换页行为(paging)，降低指令高速缓存装置的击中率(instruction cache hit rate)，以及伴随这些而来的效率损失。
+
+换个角度说，如果inline函数的本体很小，编译器针对“函数本体”所产出的码可能比针对“函数调用”所产出的码更小。果真如此，将函数inlining确实可能导致较小的目标码(object code)和较高的指令高速缓存装置击中率！
+
+inline只是对编译器的一个申请，不是强制命令。这项申请可以隐喻提出，也可以明确提出。隐喻方式是将函数定义于class定义式内：
+
+```C++
+    class Person{
+    public:
+        int age() const {return theAge;}
+    private:
+        int theAge;
+    }
+```
+
+这样的函数通常是成员函数，同样friend函数也可被定义与class内，它们也是被隐喻声明为inline。
+
+明确声明inline函数的做法则是在其定义式前加上关键字inline。例如标准的max template往往这样实现出来：
+
+```C++
+    template<typename T> inline const T& std::max(const T& a, const T& b)
+    {return a < b ? b : a;}
+```
+
+Inline函数通常一定被置于头文件内，因为大多数建置环境(build envirorunents)在编译过程中进行inlining，而为了将一个“函数调用“替换为“被调用函数的本体”，编译器必须知道那个函数长什么样子。**Inlining在大多数C++程序中是编译期行为**。
+
+一个表面上看似inline的函数是否真是inline，取决于建置环境，主要取决于编译器。
+
+一开始先不要将任何函数声明为inline，或至少将inlining施行范围局限在那些“一定成为inline”的函数身上。
+
+> 请记住
+
+- 将大多数inlining限制在小型、被频繁调用的函数身上。这可使日后的调试过程和二进制升级(binary upgradability)更容易，也可使潜在的代码膨胀问题最小化，使程序的速度提升机会最大化。
+
+- 不要只因为function templates出现在头文件，就将它们声明为inline。
+
+## 条款31：将文件间的编译依存关系降至最低
+
+Minimize compilation dependencies between files.
